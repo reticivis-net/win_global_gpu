@@ -1,3 +1,4 @@
+use std::sync::OnceLock;
 use windows::core::s;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleA;
@@ -10,11 +11,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
     DEVICE_NOTIFY_WINDOW_HANDLE, HWND_MESSAGE, MSG, PBT_APMPOWERSTATUSCHANGE,
     PBT_POWERSETTINGCHANGE, WINDOW_EX_STYLE, WINDOW_STYLE, WM_POWERBROADCAST, WNDCLASSA,
 };
-static mut UNPLUG_HANDLE:fn() = || {};
-static mut PLUG_HANDLE:fn() = || {};
+static UNPLUG_HANDLE: OnceLock<fn()> = OnceLock::new();
+static PLUG_HANDLE: OnceLock<fn()> = OnceLock::new();
 pub unsafe fn register_events(unplug:fn(), plug:fn()) {
-    UNPLUG_HANDLE = unplug;
-    PLUG_HANDLE = plug;
+    UNPLUG_HANDLE.set(unplug).expect("Unable to set unplug callback");
+    PLUG_HANDLE.set(plug).expect("Unable to set plug callback");
     // register the
     let instance = GetModuleHandleA(None).unwrap();
     let window_class = s!("window");
@@ -66,13 +67,11 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
                 const DC: u8 = PoDc.0 as u8;
                 const HOT: u8 = PoHot.0 as u8;
                 match pbs.Data[0] {
-                    AC => unsafe {
-                        println!("Plugged in!");
-                        PLUG_HANDLE();
+                    AC => {
+                        (PLUG_HANDLE.get().expect("No plug callback set"))();
                     }
-                    DC | HOT => unsafe {
-                        println!("Unplugged!");
-                        UNPLUG_HANDLE();
+                    DC | HOT => {
+                        (UNPLUG_HANDLE.get().expect("No unplug callback set"))();
                     }
                     u => {
                         panic!("Unknown POWERBROADCAST_SETTING {u}")

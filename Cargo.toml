@@ -1,0 +1,21 @@
+[package]
+name = "win_global_gpu"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+mft = "0.6.1"
+windows = { version = "0.52.0", features = [
+    "Win32_System_Power",
+    "Win32_Foundation",
+    "Win32_System_SystemServices",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_LibraryLoader",
+    "Win32_Graphics_Gdi",
+    "Data_Xml_Dom",
+    "UI_Notifications"
+] }
+winreg = "0.52.0"
+winrt-notification = "0.5.1"

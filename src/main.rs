@@ -19,7 +19,7 @@ fn plug() {
 fn main() -> Result<()> {
     println!("Hello, world!");
     unsafe {
-        exe_scan_2::get_files();
+        exe_scan_2::get_files()?;
     }
     // let files = exe_scan::get_files()?;
     // println!("{}", files.len());

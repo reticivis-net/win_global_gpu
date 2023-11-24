@@ -15,8 +15,8 @@ fn plug() {
 
 fn main() -> Result<()> {
     println!("Hello, world!");
-    println!("\\\\.\\C:");
-    dbg!(exe_scan::scan_drive(&"\\\\.\\C:".to_string())?);
+    let files = exe_scan::get_files()?;
+    dbg!(files);
     unsafe { charging_events::register_events(unplug, plug)? }
     Ok(())
 }

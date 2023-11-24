@@ -1,58 +1,72 @@
 use super::sector_reader::SectorReader;
 use anyhow::{anyhow, Result};
 use ntfs::Ntfs;
-use std::ffi::CStr;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek};
 use windows::Win32::Foundation::GetLastError;
-use windows::Win32::Storage::FileSystem::GetLogicalDriveStringsA;
+use windows::Win32::Storage::FileSystem::GetLogicalDrives;
 
 pub fn get_files() -> Result<Vec<String>> {
     let mut files: Vec<String> = vec![];
-    dbg!(get_drives()?);
     for drive in get_drives()? {
-        files.append(&mut scan_drive(&drive)?);
+        match scan_drive(&drive) {
+            Ok(mut drive_files) => files.append(&mut drive_files),
+            Err(e) => {
+                eprintln!("Scanning drive {drive} failed due to {e}!")
+            }
+        }
     }
     Ok(files)
 }
 
 pub fn scan_drive(drive: &String) -> Result<Vec<String>> {
-    let f = File::open(&drive)?;
+    let f = File::open(drive)?;
     let sr = SectorReader::new(f, 4096)?;
     let mut fs = BufReader::new(sr);
     let mut ntfs = Ntfs::new(&mut fs)?;
     ntfs.read_upcase_table(&mut fs)?;
     let root = ntfs.root_directory(&mut fs)?;
-    scan_dir(root, fs)
+    scan_dir(&root, &mut fs, &ntfs, drive)
 }
 
-fn scan_dir<T>(dir: ntfs::NtfsFile, mut fs: T) -> Result<Vec<String>>
+fn scan_dir<T>(
+    dir: &ntfs::NtfsFile,
+    fs: &mut T,
+    ntfs: &Ntfs,
+    parent: &String,
+) -> Result<Vec<String>>
 where
     T: Read + Seek,
 {
-    let files: Vec<String> = vec![];
-    let index = dir.directory_index(&mut fs)?;
+    let mut files: Vec<String> = vec![];
+    let index = dir.directory_index(fs)?;
     let mut iter = index.entries();
-    while let Some(file) = iter.next(&mut fs) {
+    while let Some(file) = iter.next(fs) {
         let file = file?;
         let key = file.key().unwrap()?;
-        if key.is_directory() {}
-        dbg!(key.name().to_string()?);
+        let name = key.name().to_string()?;
+        if name.starts_with("$") || name == "." {
+            continue;
+        }
+        let full_name = format!("{parent}\\{name}");
+        if key.is_directory() {
+            let mut child = scan_dir(&file.to_file(ntfs, fs)?, fs, ntfs, &full_name)?;
+            files.append(&mut child)
+        } else {
+            files.push(full_name)
+        }
     }
     Ok(files)
 }
 
 fn get_drives() -> Result<Vec<String>> {
     let mut drives: Vec<String> = vec![];
-
-    const BUFSIZE: usize = 512;
-    let mut lpbuffer: [u8; BUFSIZE] = [0u8; BUFSIZE];
-    let rval;
+    let drive_bitmask;
     unsafe {
-        rval = GetLogicalDriveStringsA(Some(&mut lpbuffer));
+        drive_bitmask = GetLogicalDrives();
     }
     // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getlogicaldrivestringsa#return-value
-    if rval == 0 {
+    if drive_bitmask == 0 {
         // fail
         let err = unsafe { GetLastError().err() };
         match err {
@@ -61,14 +75,13 @@ fn get_drives() -> Result<Vec<String>> {
                 "Reading drive letters failed due to an unknown error!"
             )),
         }
-    } else if rval as usize > BUFSIZE {
-        // if not fail, rval is buffer size
-        Err(anyhow!(
-            "Reading drive letters failed! Buffer needs to be {rval} long but is only {BUFSIZE}."
-        ))
     } else {
-        for drive in lpbuffer[..rval as usize].split_inclusive(|c| *c == 0u8) {
-            drives.push(CStr::from_bytes_with_nul(drive)?.to_str()?.to_string());
+        const LETTERS: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        for i in 0..26 {
+            if (1 << i) & drive_bitmask != 0 {
+                let letter = LETTERS.as_bytes()[i] as char;
+                drives.push(format!("\\\\.\\{letter}:"));
+            }
         }
         Ok(drives)
     }

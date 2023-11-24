@@ -9,6 +9,7 @@ edition = "2021"
 anyhow = { version = "1.0.75", features = [
     "backtrace"
 ] }
+
 ntfs = "0.4.0"
 windows = { version = "0.52.0", features = [
     "Win32_System_Power",
@@ -19,7 +20,10 @@ windows = { version = "0.52.0", features = [
     "Win32_Graphics_Gdi",
     "Data_Xml_Dom",
     "UI_Notifications",
-    "Win32_Storage_FileSystem"
+    "Win32_Storage_FileSystem",
+    "Win32_Security",
+    "Win32_System_IO",
+    "Win32_System_Ioctl"
 ] }
 winreg = "0.52.0"
 winrt-notification = "0.5.1"

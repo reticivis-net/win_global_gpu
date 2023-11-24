@@ -24,8 +24,14 @@ pub fn scan_drive(drive: &String) -> Result<Vec<String>> {
     let sr = SectorReader::new(f, 4096)?;
     let mut fs = BufReader::new(sr);
     let mut ntfs = Ntfs::new(&mut fs)?;
-    dbg!(ntfs.mft_position(), ntfs.size());
-    ntfs.read_upcase_table(&mut fs)?;
+    // let mut i = 0;
+    // while let Ok(file) = ntfs.file(&mut fs, i) {
+    //     file;
+    //     i+=1;
+    // }
+    // println!("{}", i);
+    // Ok(vec!())
+    // ntfs.read_upcase_table(&mut fs)?;
     let root = ntfs.root_directory(&mut fs)?;
     scan_dir(&root, &mut fs, &ntfs, drive)
 }

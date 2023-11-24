@@ -1,5 +1,6 @@
 mod charging_events;
 mod exe_scan;
+mod exe_scan_2;
 mod notification;
 mod registry;
 mod sector_reader;
@@ -17,9 +18,11 @@ fn plug() {
 
 fn main() -> Result<()> {
     println!("Hello, world!");
-    let f = File::open("C:\\$MFT")?;
-    let files = exe_scan::get_files()?;
-    println!("{}", files.len());
-    unsafe { charging_events::register_events(unplug, plug)? }
+    unsafe {
+        exe_scan_2::get_files();
+    }
+    // let files = exe_scan::get_files()?;
+    // println!("{}", files.len());
+    // unsafe { charging_events::register_events(unplug, plug)? }
     Ok(())
 }

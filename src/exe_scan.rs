@@ -4,7 +4,7 @@ use ntfs::Ntfs;
 use std::ffi::CStr;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek};
-// use windows::Win32::Foundation::GetLastError;
+use windows::Win32::Foundation::GetLastError;
 use windows::Win32::Storage::FileSystem::GetLogicalDriveStringsA;
 
 pub fn get_files() -> Result<Vec<String>> {
@@ -54,8 +54,13 @@ fn get_drives() -> Result<Vec<String>> {
     // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getlogicaldrivestringsa#return-value
     if rval == 0 {
         // fail
-        // let err = unsafe { GetLastError()? };
-        Err(anyhow!("Reading drive letters failed!"))
+        let err = unsafe { GetLastError().err() };
+        match err {
+            Some(e) => Err(anyhow!("Reading drive letters failed! {e}")),
+            None => Err(anyhow!(
+                "Reading drive letters failed due to an unknown error!"
+            )),
+        }
     } else if rval as usize > BUFSIZE {
         // if not fail, rval is buffer size
         Err(anyhow!(

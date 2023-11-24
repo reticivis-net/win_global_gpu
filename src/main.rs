@@ -1,9 +1,9 @@
 mod charging_events;
 mod exe_scan;
-mod winapp_scan;
-mod registry;
 mod notification;
+mod registry;
 mod sector_reader;
+mod winapp_scan;
 use anyhow::Result;
 
 fn unplug() {

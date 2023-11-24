@@ -11,13 +11,15 @@ use windows::Win32::UI::WindowsAndMessaging::{
     DEVICE_NOTIFY_WINDOW_HANDLE, HWND_MESSAGE, MSG, PBT_APMPOWERSTATUSCHANGE,
     PBT_POWERSETTINGCHANGE, WINDOW_EX_STYLE, WINDOW_STYLE, WM_POWERBROADCAST, WNDCLASSA,
 };
+use anyhow::Result;
+
 static UNPLUG_HANDLE: OnceLock<fn()> = OnceLock::new();
 static PLUG_HANDLE: OnceLock<fn()> = OnceLock::new();
-pub unsafe fn register_events(unplug:fn(), plug:fn()) {
+pub unsafe fn register_events(unplug:fn(), plug:fn()) -> Result<()> {
     UNPLUG_HANDLE.set(unplug).expect("Unable to set unplug callback");
     PLUG_HANDLE.set(plug).expect("Unable to set plug callback");
     // register the
-    let instance = GetModuleHandleA(None).unwrap();
+    let instance = GetModuleHandleA(None)?;
     let window_class = s!("window");
 
     let wc = WNDCLASSA {
@@ -53,6 +55,7 @@ pub unsafe fn register_events(unplug:fn(), plug:fn()) {
     while GetMessageA(&mut message, window, 0, 0).into() {
         DispatchMessageA(&message);
     }
+    Ok(())
 }
 
 extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {

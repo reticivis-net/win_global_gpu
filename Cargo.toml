@@ -11,6 +11,7 @@ anyhow = { version = "1.0.75", features = [
 ] }
 
 ntfs = "0.4.0"
+rustc-hash = "1.1.0"
 windows = { version = "0.52.0", features = [
     "Win32_System_Power",
     "Win32_Foundation",

@@ -4,9 +4,8 @@ use std::ffi::c_void;
 use windows::core::s;
 use windows::Win32::Foundation::GENERIC_READ;
 use windows::Win32::Storage::FileSystem::{
-    CreateFileA, OpenFileById, FILE_ATTRIBUTE_DIRECTORY, FILE_FLAG_OVERLAPPED, FILE_SHARE_READ,
-    FILE_SHARE_WRITE, OPEN_EXISTING, FILE_ID_DESCRIPTOR, FILE_ID_DESCRIPTOR_0, FileIdType,
-    GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION
+    CreateFileA, FileIdBothDirectoryInfo, GetFileInformationByHandleEx, FILE_ATTRIBUTE_DIRECTORY,
+    FILE_FLAG_OVERLAPPED, FILE_ID_BOTH_DIR_INFO, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
 use windows::Win32::System::Ioctl::{FSCTL_ENUM_USN_DATA, MFT_ENUM_DATA_V0, USN_RECORD_V2};
 use windows::Win32::System::IO::DeviceIoControl;
@@ -18,9 +17,11 @@ struct MiniFile {
     parent: u64,
 }
 
+#[derive(Debug)]
 struct MiniDir {
     name: String,
-    full_name: String,
+    full_name: Option<String>,
+    parent: u64,
 }
 
 pub unsafe fn get_files() -> Result<()> {
@@ -34,8 +35,21 @@ pub unsafe fn get_files() -> Result<()> {
         None,
     )?;
 
+    // let mut root_info = FILE_ID_BOTH_DIR_INFO::default();
+    //
+    // GetFileInformationByHandleEx(
+    //     handle,
+    //     FileIdBothDirectoryInfo,
+    //     &mut root_info as *mut _ as *mut c_void,
+    //     std::mem::size_of::<FILE_ID_BOTH_DIR_INFO>() as u32
+    // )?;
+    //
+    // dbg!(root_info);
+    // return Ok(());
+
     let mut med = MFT_ENUM_DATA_V0 {
         HighUsn: i64::MAX,
+        LowUsn: i64::MIN,
         ..Default::default()
     };
     // evil pointer hacks
@@ -52,6 +66,8 @@ pub unsafe fn get_files() -> Result<()> {
     let mut bytes_returned: u32 = 0;
 
     let mut exes: Vec<MiniFile> = vec![];
+    let mut dirs: FxHashMap<u64, MiniDir> = FxHashMap::default();
+    let mut files: u64 = 0;
 
     println!("Scanning for EXEs...");
     // open the MFT
@@ -93,16 +109,31 @@ pub unsafe fn get_files() -> Result<()> {
                 .collect();
             match String::from_utf16(&name_words) {
                 Ok(n) => {
+                    // this never happens
+                    if record.FileReferenceNumber == 1407374883553285 {
+                        dbg!(record, n);
+                        panic!();
+                    }
                     // is not directory, we'll traverse those later
-                    if record.FileAttributes & FILE_ATTRIBUTE_DIRECTORY.0 == 0
-                    // is exe file
-                        && n.ends_with(".exe")
-                    {
-                        // println!("DIR {}", n)
-                        exes.push(MiniFile {
-                            name: n,
-                            parent: record.ParentFileReferenceNumber,
-                        })
+                    if record.FileAttributes & FILE_ATTRIBUTE_DIRECTORY.0 != 0 {
+                        let ret = dirs.insert(
+                            record.FileReferenceNumber,
+                            MiniDir {
+                                name: n,
+                                full_name: None,
+                                parent: record.ParentFileReferenceNumber,
+                            },
+                        );
+                    } else {
+                        files += 1;
+                        if n.ends_with(".exe") {
+                            // is exe file
+                            // println!("DIR {}", n)
+                            exes.push(MiniFile {
+                                name: n,
+                                parent: record.ParentFileReferenceNumber,
+                            })
+                        }
                     }
                     // println!("{}", n)
                 }
@@ -121,37 +152,27 @@ pub unsafe fn get_files() -> Result<()> {
             offset += record.RecordLength as usize;
         }
     }
-    println!("Found {} EXEs.\nBuilding tree...", exes.len());
-    let mut dirs: FxHashMap<u64, MiniDir>;
+    println!(
+        "Found {} EXEs and {} dirs and {} files.\nBuilding tree...",
+        exes.len(),
+        dirs.len(),
+        files
+    );
     for exe in exes {
-        let id = FILE_ID_DESCRIPTOR {
-            dwSize: std::mem::size_of::<FILE_ID_DESCRIPTOR>() as u32,
-            Type:FileIdType,
-            Anonymous: FILE_ID_DESCRIPTOR_0 { FileId: exe.parent as i64}
-        };
-        let file = OpenFileById(
-            handle,
-            &id as *const FILE_ID_DESCRIPTOR,
-            GENERIC_READ.0,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            None,
-            FILE_FLAG_OVERLAPPED
-        );
-        match file {
-            Ok(f) => {
-                dbg!(f);
-                let fileinfo = LPBY_HANDLE_FILE_INFORMATION {
-                    ..Default::default()
+        let mut e = dirs.get(&exe.parent);
+        loop {
+            match e {
+                Some(p) => {
+                    e = dirs.get(&p.parent);
+                    dbg!(p);
                 }
-                GetFileInformationByHandle(
-
-                )?;
-                panic!();
-            }
-            Err(e) => {
-                dbg!(exe, e);
+                None => {
+                    dbg!(e);
+                    break;
+                }
             }
         }
+        break;
     }
     Ok(())
 }

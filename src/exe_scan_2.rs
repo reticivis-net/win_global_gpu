@@ -4,8 +4,8 @@ use std::ffi::c_void;
 use windows::core::s;
 use windows::Win32::Foundation::GENERIC_READ;
 use windows::Win32::Storage::FileSystem::{
-    CreateFileA, FileIdBothDirectoryInfo, GetFileInformationByHandleEx, FILE_ATTRIBUTE_DIRECTORY,
-    FILE_FLAG_OVERLAPPED, FILE_ID_BOTH_DIR_INFO, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+    CreateFileA, FileIdInfo, GetFileInformationByHandleEx, FILE_ATTRIBUTE_DIRECTORY,
+    FILE_FLAG_OVERLAPPED, FILE_ID_INFO, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
 use windows::Win32::System::Ioctl::{FSCTL_ENUM_USN_DATA, MFT_ENUM_DATA_V0, USN_RECORD_V2};
 use windows::Win32::System::IO::DeviceIoControl;
@@ -35,13 +35,13 @@ pub unsafe fn get_files() -> Result<()> {
         None,
     )?;
 
-    // let mut root_info = FILE_ID_BOTH_DIR_INFO::default();
+    // let mut root_info = FILE_ID_INFO::default();
     //
     // GetFileInformationByHandleEx(
     //     handle,
-    //     FileIdBothDirectoryInfo,
+    //     FileIdInfo,
     //     &mut root_info as *mut _ as *mut c_void,
-    //     std::mem::size_of::<FILE_ID_BOTH_DIR_INFO>() as u32
+    //     std::mem::size_of::<FILE_ID_INFO>() as u32
     // )?;
     //
     // dbg!(root_info);
@@ -110,7 +110,9 @@ pub unsafe fn get_files() -> Result<()> {
             match String::from_utf16(&name_words) {
                 Ok(n) => {
                     // this never happens
-                    if record.FileReferenceNumber == 1407374883553285 {
+                    if record.FileReferenceNumber == 5
+                    /*1407374883553285*/
+                    {
                         dbg!(record, n);
                         panic!();
                     }
@@ -124,6 +126,9 @@ pub unsafe fn get_files() -> Result<()> {
                                 parent: record.ParentFileReferenceNumber,
                             },
                         );
+                        if let Some(r) = ret {
+                            dbg!(record, r);
+                        }
                     } else {
                         files += 1;
                         if n.ends_with(".exe") {

@@ -1,6 +1,9 @@
 use anyhow::{anyhow, Result};
 use rustc_hash::FxHashMap;
 use std::ffi::c_void;
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
 use std::string::FromUtf16Error;
 use windows::core::s;
 use windows::Win32::Foundation::{GENERIC_READ, HANDLE};
@@ -168,7 +171,22 @@ pub unsafe fn get_files() -> Result<()> {
         dirs.len(),
         files
     );
-    println!("{}", minifile_to_path(&exes[0], &mut dirs, &handle)?);
+    let mut full_file: String = String::new();
+    for exe in exes {
+        match minifile_to_path(&exe, &mut dirs, &handle) {
+            Ok(path) => {
+                full_file.push_str(&path);
+                full_file.push_str("\n");
+            }
+            Err(e) => {
+                dbg!("Tree failure:", exe, e);
+            }
+        }
+    }
+    println!("Tree built!\nWriting to file...");
+    let mut file = File::create("EXEs.txt")?;
+    file.write_all(full_file.as_bytes())?;
+    println!("Wrote!");
     Ok(())
 }
 
@@ -178,14 +196,14 @@ fn minifile_to_path(
     handle: &HANDLE,
 ) -> Result<String> {
     let parent: String;
-    // brain-melting reference management because dirs needs to be unreferenced to be passed to the
-    // recursions
-    let parentmaybe = dirs.get(&file.parent);
-    if parentmaybe.is_some() {
-        let cloned_parent = parentmaybe.unwrap().clone();
+    // clone so we can later borrow dirs to pass to the recursive child
+    if let Some(cloned_parent) = dirs.get(&file.parent).cloned() {
+        // let cloned_parent = parentmaybe.unwrap().clone();
         if let Some(full) = &cloned_parent.full_name {
             parent = full.clone();
         } else {
+            // no, a directory is not a file, but also i am not rewriting this function or doing
+            // trait bullshit to get a minidir to work here, shut up
             let full_name = minifile_to_path(
                 &MiniFile {
                     name: cloned_parent.name.clone(),
@@ -194,6 +212,7 @@ fn minifile_to_path(
                 dirs,
                 handle,
             )?;
+            // another get_mut cause only 1 can mut borrow at a time and we just mut borrowed
             dirs.get_mut(&file.parent).unwrap().full_name = Some(full_name.clone());
             parent = full_name;
         }
@@ -217,7 +236,7 @@ unsafe fn path_from_id(handle: &HANDLE, id: &i64) -> Result<String> {
     // get the path from an unknown ID, most notably used for the root folder
 
     // weird struct to hold the ID
-    let id = FILE_ID_DESCRIPTOR {
+    let id_struct = FILE_ID_DESCRIPTOR {
         dwSize: std::mem::size_of::<FILE_ID_DESCRIPTOR>() as u32,
         Type: FileIdType,
         Anonymous: FILE_ID_DESCRIPTOR_0 { FileId: *id },
@@ -225,7 +244,7 @@ unsafe fn path_from_id(handle: &HANDLE, id: &i64) -> Result<String> {
     // open the file
     let file = OpenFileById(
         *handle,
-        &id as *const FILE_ID_DESCRIPTOR,
+        &id_struct as *const FILE_ID_DESCRIPTOR,
         GENERIC_READ.0,
         FILE_SHARE_READ | FILE_SHARE_WRITE,
         None,
@@ -240,7 +259,9 @@ unsafe fn path_from_id(handle: &HANDLE, id: &i64) -> Result<String> {
         Err(anyhow!("GetFinalPathNameByHandleA failed."))
     } else {
         // convert to string and return
-        Ok(String::from_utf8(lpszFilePath[..len as usize].to_vec())?)
+        let path = String::from_utf8(lpszFilePath[..len as usize].to_vec())?;
+        // println!("unknown ID {id}'s path is {path}");
+        Ok(path)
     }
 }
 

@@ -5,10 +5,10 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 use std::string::FromUtf16Error;
-use windows::core::s;
+use windows::core::HSTRING;
 use windows::Win32::Foundation::{GENERIC_READ, HANDLE};
 use windows::Win32::Storage::FileSystem::{
-    CreateFileA,
+    CreateFileW,
     FileIdType,
     GetFinalPathNameByHandleA,
     OpenFileById,
@@ -38,10 +38,10 @@ struct MiniDir {
     parent: u64,
 }
 
-pub unsafe fn get_files() -> Result<()> {
+pub unsafe fn get_files(drive: char) -> Result<()> {
     // create the handle to the volume we want
-    let handle = CreateFileA(
-        s!("\\\\.\\C:"),
+    let handle = CreateFileW(
+        &HSTRING::from(format!("\\\\.\\{drive}:")),
         GENERIC_READ.0,
         FILE_SHARE_READ | FILE_SHARE_WRITE,
         None,

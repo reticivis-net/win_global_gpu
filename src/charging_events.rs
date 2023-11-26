@@ -1,16 +1,16 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use std::sync::OnceLock;
-use windows::core::s;
+use windows::core::{HSTRING, PCWSTR};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
-use windows::Win32::System::LibraryLoader::GetModuleHandleA;
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Power::{
     PoAc, PoDc, PoHot, RegisterPowerSettingNotification, POWERBROADCAST_SETTING,
 };
 use windows::Win32::System::SystemServices::GUID_ACDC_POWER_SOURCE;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExA, DefWindowProcA, DispatchMessageA, GetMessageA, RegisterClassA, CW_USEDEFAULT,
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, RegisterClassW, CW_USEDEFAULT,
     DEVICE_NOTIFY_WINDOW_HANDLE, HWND_MESSAGE, MSG, PBT_APMPOWERSTATUSCHANGE,
-    PBT_POWERSETTINGCHANGE, WINDOW_EX_STYLE, WINDOW_STYLE, WM_POWERBROADCAST, WNDCLASSA,
+    PBT_POWERSETTINGCHANGE, WINDOW_EX_STYLE, WINDOW_STYLE, WM_POWERBROADCAST, WNDCLASSW,
 };
 
 static UNPLUG_HANDLE: OnceLock<fn()> = OnceLock::new();
@@ -21,21 +21,23 @@ pub unsafe fn register_events(unplug: fn(), plug: fn()) -> Result<()> {
         .expect("Unable to set unplug callback");
     PLUG_HANDLE.set(plug).expect("Unable to set plug callback");
     // register the
-    let instance = GetModuleHandleA(None)?;
-    let window_class = s!("window");
+    let instance = GetModuleHandleW(None)?;
+    let window_class = HSTRING::from("win_global_gpu");
 
-    let wc = WNDCLASSA {
+    let wc = WNDCLASSW {
         hInstance: instance.into(),
-        lpszClassName: window_class,
+        lpszClassName: PCWSTR(window_class.as_ptr()),
         lpfnWndProc: Some(wndproc),
         ..Default::default()
     };
-    let atom = RegisterClassA(&wc);
-    debug_assert!(atom != 0);
-    let window = CreateWindowExA(
+    let atom = RegisterClassW(&wc);
+    if atom == 0 {
+        return Err(anyhow!("RegisterClass failed"));
+    }
+    let window = CreateWindowExW(
         WINDOW_EX_STYLE::default(),
-        window_class,
-        s!("test"),
+        &window_class,
+        &HSTRING::from("win_global_gpu"),
         WINDOW_STYLE::default(),
         CW_USEDEFAULT,
         CW_USEDEFAULT,
@@ -50,12 +52,11 @@ pub unsafe fn register_events(unplug: fn(), plug: fn()) -> Result<()> {
         window,
         &GUID_ACDC_POWER_SOURCE,
         DEVICE_NOTIFY_WINDOW_HANDLE.0,
-    )
-    .expect("oopsie woopsie :3");
+    )?;
     let mut message = MSG::default();
 
-    while GetMessageA(&mut message, window, 0, 0).into() {
-        DispatchMessageA(&message);
+    while GetMessageW(&mut message, window, 0, 0).into() {
+        DispatchMessageW(&message);
     }
     Ok(())
 }
@@ -85,6 +86,6 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
             }
             LRESULT(0)
         }
-        _ => unsafe { DefWindowProcA(window, message, wparam, lparam) },
+        _ => unsafe { DefWindowProcW(window, message, wparam, lparam) },
     }
 }

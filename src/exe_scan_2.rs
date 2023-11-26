@@ -1,11 +1,14 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use rustc_hash::FxHashMap;
 use std::ffi::c_void;
+use std::string::FromUtf16Error;
 use windows::core::s;
-use windows::Win32::Foundation::GENERIC_READ;
+use windows::Win32::Foundation::{GENERIC_READ, HANDLE};
 use windows::Win32::Storage::FileSystem::{
-    CreateFileA, FileIdInfo, GetFileInformationByHandleEx, FILE_ATTRIBUTE_DIRECTORY,
-    FILE_FLAG_OVERLAPPED, FILE_ID_INFO, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+    CreateFileA, FileIdInfo, FileIdType, GetFileInformationByHandleEx, GetFinalPathNameByHandleA,
+    OpenFileById, FILE_ATTRIBUTE_DIRECTORY, FILE_FLAG_OVERLAPPED, FILE_ID_DESCRIPTOR,
+    FILE_ID_DESCRIPTOR_0, FILE_ID_INFO, FILE_NAME_NORMALIZED, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    OPEN_EXISTING,
 };
 use windows::Win32::System::Ioctl::{FSCTL_ENUM_USN_DATA, MFT_ENUM_DATA_V0, USN_RECORD_V2};
 use windows::Win32::System::IO::DeviceIoControl;
@@ -17,7 +20,7 @@ struct MiniFile {
     parent: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct MiniDir {
     name: String,
     full_name: Option<String>,
@@ -99,18 +102,14 @@ pub unsafe fn get_files() -> Result<()> {
                 );
             // the name isn't properly in the struct, we have to do pointer math to get it
             // https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ns-winioctl-usn_record_v2
-            let name_bytes = p_data[offset + record.FileNameOffset as usize
-                ..offset + record.FileNameOffset as usize + record.FileNameLength as usize]
-                .to_vec();
             // convert the u8 bytes of UTF-16 into a rust string
-            let name_words: Vec<u16> = name_bytes
-                .chunks(2)
-                .map(|chunk| u16::from_ne_bytes([chunk[0], chunk[1]])) // Use from_le_bytes or from_be_bytes for little/big endian
-                .collect();
-            match String::from_utf16(&name_words) {
+            match string_from_utf16(
+                &p_data[offset + record.FileNameOffset as usize
+                    ..offset + record.FileNameOffset as usize + record.FileNameLength as usize],
+            ) {
                 Ok(n) => {
                     // this never happens
-                    if record.FileReferenceNumber == 5
+                    if record.Usn == 5
                     /*1407374883553285*/
                     {
                         dbg!(record, n);
@@ -118,6 +117,12 @@ pub unsafe fn get_files() -> Result<()> {
                     }
                     // is not directory, we'll traverse those later
                     if record.FileAttributes & FILE_ATTRIBUTE_DIRECTORY.0 != 0 {
+                        if
+                        /*n == "C" ||*/
+                        n == "C:" || n == "C:\\" {
+                            dbg!(&record, &n);
+                            // panic!();
+                        }
                         let ret = dirs.insert(
                             record.FileReferenceNumber,
                             MiniDir {
@@ -163,21 +168,92 @@ pub unsafe fn get_files() -> Result<()> {
         dirs.len(),
         files
     );
-    for exe in exes {
-        let mut e = dirs.get(&exe.parent);
-        loop {
-            match e {
-                Some(p) => {
-                    e = dirs.get(&p.parent);
-                    dbg!(p);
-                }
-                None => {
-                    dbg!(e);
-                    break;
-                }
-            }
-        }
-        break;
-    }
+    println!("{}", minifile_to_path(&exes[0], &mut dirs, &handle)?);
     Ok(())
+}
+
+fn minifile_to_path(
+    file: &MiniFile,
+    dirs: &mut FxHashMap<u64, MiniDir>,
+    handle: &HANDLE,
+) -> Result<String> {
+    let parent: String;
+    // brain-melting reference management because dirs needs to be unreferenced to be passed to the
+    // recursions
+    let parentmaybe = dirs.get(&file.parent);
+    if parentmaybe.is_some() {
+        let cloned_parent = parentmaybe.unwrap().clone();
+        if let Some(full) = &cloned_parent.full_name {
+            parent = full.clone();
+        } else {
+            let full_name = minifile_to_path(
+                &MiniFile {
+                    name: cloned_parent.name.clone(),
+                    parent: cloned_parent.parent,
+                },
+                dirs,
+                handle,
+            )?;
+            dirs.get_mut(&file.parent).unwrap().full_name = Some(full_name.clone());
+            parent = full_name;
+        }
+    } else {
+        let unknown_path = unsafe { path_from_id(handle, &(file.parent as i64))? };
+        dirs.insert(
+            file.parent,
+            MiniDir {
+                full_name: Some(unknown_path.clone()),
+                // doesnt matter
+                name: String::new(),
+                parent: 0,
+            },
+        );
+        parent = unknown_path;
+    }
+    Ok(format!("{}\\{}", parent, file.name))
+}
+
+unsafe fn path_from_id(handle: &HANDLE, id: &i64) -> Result<String> {
+    // get the path from an unknown ID, most notably used for the root folder
+
+    // weird struct to hold the ID
+    let id = FILE_ID_DESCRIPTOR {
+        dwSize: std::mem::size_of::<FILE_ID_DESCRIPTOR>() as u32,
+        Type: FileIdType,
+        Anonymous: FILE_ID_DESCRIPTOR_0 { FileId: *id },
+    };
+    // open the file
+    let file = OpenFileById(
+        *handle,
+        &id as *const FILE_ID_DESCRIPTOR,
+        GENERIC_READ.0,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        None,
+        FILE_FLAG_OVERLAPPED,
+    )?;
+    // get the path from the handle we opened
+    const BSIZE: usize = 0x8000;
+    let mut lpszFilePath: [u8; BSIZE] = [0; BSIZE];
+    let len = GetFinalPathNameByHandleA(file, &mut lpszFilePath, FILE_NAME_NORMALIZED);
+    if len == 0 {
+        // err case
+        Err(anyhow!("GetFinalPathNameByHandleA failed."))
+    } else {
+        // convert to string and return
+        Ok(String::from_utf8(lpszFilePath[..len as usize].to_vec())?)
+    }
+}
+
+fn string_from_utf16(utf16: &[u8]) -> Result<String, FromUtf16Error> {
+    // thanks chatgpt for this btw
+    let name_words: Vec<u16> = utf16
+        // group by 2 bytes
+        .chunks(2)
+        // map bytes to words
+        // yes [chunk[0], chunk[1]] is necessary because 🤓 size cant be known at compile time
+        .map(|chunk| u16::from_ne_bytes([chunk[0], chunk[1]]))
+        // collect
+        .collect();
+    // vec of words to utf16
+    String::from_utf16(&name_words)
 }

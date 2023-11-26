@@ -8,10 +8,18 @@ use std::string::FromUtf16Error;
 use windows::core::s;
 use windows::Win32::Foundation::{GENERIC_READ, HANDLE};
 use windows::Win32::Storage::FileSystem::{
-    CreateFileA, FileIdInfo, FileIdType, GetFileInformationByHandleEx, GetFinalPathNameByHandleA,
-    OpenFileById, FILE_ATTRIBUTE_DIRECTORY, FILE_FLAG_OVERLAPPED, FILE_ID_DESCRIPTOR,
-    FILE_ID_DESCRIPTOR_0, FILE_ID_INFO, FILE_NAME_NORMALIZED, FILE_SHARE_READ, FILE_SHARE_WRITE,
-    OPEN_EXISTING,
+    CreateFileA,
+    FileIdType,
+    GetFinalPathNameByHandleA,
+    OpenFileById,
+    FILE_ATTRIBUTE_DIRECTORY,
+    FILE_FLAG_OVERLAPPED,
+    FILE_ID_DESCRIPTOR,
+    FILE_ID_DESCRIPTOR_0,
+    FILE_NAME_NORMALIZED,
+    FILE_SHARE_READ,
+    FILE_SHARE_WRITE,
+    OPEN_EXISTING, //FILE_ID_INFO,FileIdInfo,GetFileInformationByHandleEx,
 };
 use windows::Win32::System::Ioctl::{FSCTL_ENUM_USN_DATA, MFT_ENUM_DATA_V0, USN_RECORD_V2};
 use windows::Win32::System::IO::DeviceIoControl;
@@ -31,6 +39,7 @@ struct MiniDir {
 }
 
 pub unsafe fn get_files() -> Result<()> {
+    // create the handle to the volume we want
     let handle = CreateFileA(
         s!("\\\\.\\C:"),
         GENERIC_READ.0,
@@ -41,6 +50,7 @@ pub unsafe fn get_files() -> Result<()> {
         None,
     )?;
 
+    // old code attempting to get the ID from the handle that errored and isnt needed anymore
     // let mut root_info = FILE_ID_INFO::default();
     //
     // GetFileInformationByHandleEx(
@@ -53,6 +63,7 @@ pub unsafe fn get_files() -> Result<()> {
     // dbg!(root_info);
     // return Ok(());
 
+    // struct that we pass a pointer to windows and it reads and we modify
     let mut med = MFT_ENUM_DATA_V0 {
         HighUsn: i64::MAX,
         LowUsn: i64::MIN,
@@ -195,10 +206,12 @@ fn minifile_to_path(
     dirs: &mut FxHashMap<u64, MiniDir>,
     handle: &HANDLE,
 ) -> Result<String> {
+    // convert a MiniFile to a full resolved path string
+    // parent path, set later
     let parent: String;
+    // if the parent is in the dirs hashmap
     // clone so we can later borrow dirs to pass to the recursive child
     if let Some(cloned_parent) = dirs.get(&file.parent).cloned() {
-        // let cloned_parent = parentmaybe.unwrap().clone();
         if let Some(full) = &cloned_parent.full_name {
             parent = full.clone();
         } else {
@@ -217,6 +230,7 @@ fn minifile_to_path(
             parent = full_name;
         }
     } else {
+        // parent isnt in the hashmap, 99% chance this is just the root drive but let's look it up
         let unknown_path = unsafe { path_from_id(handle, &(file.parent as i64))? };
         dirs.insert(
             file.parent,

@@ -5,7 +5,7 @@ use std::string::FromUtf16Error;
 use windows::core::HSTRING;
 use windows::Win32::Foundation::{GENERIC_READ, HANDLE, MAX_PATH};
 use windows::Win32::Storage::FileSystem::{
-    CreateFileW, FileIdType, FindFirstVolumeW, FindNextVolumeW, GetFinalPathNameByHandleA,
+    CreateFileW, FileIdType, FindFirstVolumeW, FindNextVolumeW, GetFinalPathNameByHandleW,
     GetVolumeInformationByHandleW, OpenFileById, FILE_ATTRIBUTE_DIRECTORY, FILE_FLAG_OVERLAPPED,
     FILE_ID_DESCRIPTOR, FILE_ID_DESCRIPTOR_0, FILE_NAME_NORMALIZED, FILE_SHARE_READ,
     FILE_SHARE_WRITE, OPEN_EXISTING,
@@ -13,24 +13,26 @@ use windows::Win32::Storage::FileSystem::{
 use windows::Win32::System::Ioctl::{FSCTL_ENUM_USN_DATA, MFT_ENUM_DATA_V0, USN_RECORD_V2};
 use windows::Win32::System::IO::DeviceIoControl;
 
+const BACKSLASH_UTF16: u16 = 92;
+
 #[derive(Debug)]
 struct MiniFile {
     // store only what we need
-    name: String,
+    name: HSTRING,
     parent: u64,
 }
 
 #[derive(Debug, Clone)]
 struct MiniDir {
-    name: String,
-    full_name: Option<String>,
+    name: HSTRING,
+    full_name: Option<HSTRING>,
     parent: u64,
 }
 
-pub unsafe fn get_files_in_volume(volume: String) -> Result<Vec<String>> {
+pub unsafe fn get_files_in_volume(volume: HSTRING) -> Result<Vec<HSTRING>> {
     // create the handle to the volume we want
     let handle = CreateFileW(
-        &HSTRING::from(&volume),
+        &volume,
         GENERIC_READ.0,
         FILE_SHARE_READ | FILE_SHARE_WRITE,
         None,
@@ -40,11 +42,24 @@ pub unsafe fn get_files_in_volume(volume: String) -> Result<Vec<String>> {
     )?;
 
     // make sure this is NTFS
-    let mut file_sytem: [u16; MAX_PATH as usize + 1] = [0; MAX_PATH as usize + 1];
-    GetVolumeInformationByHandleW(handle, None, None, None, None, Some(&mut file_sytem))?;
-    let fs = string_from_utf16_buffer(&file_sytem)?;
-    if fs != "NTFS" {
-        return Err(anyhow!("{volume} is not NTFS, it is {fs}."));
+    let mut file_system_buffer: [u16; MAX_PATH as usize + 1] = [0; MAX_PATH as usize + 1];
+    let mut volume_name_buffer: [u16; MAX_PATH as usize + 1] = [0; MAX_PATH as usize + 1];
+    GetVolumeInformationByHandleW(
+        handle,
+        Some(&mut volume_name_buffer),
+        None,
+        None,
+        None,
+        Some(&mut file_system_buffer),
+    )?;
+    let mut volume_name = string_from_utf16_buffer(&volume_name_buffer).unwrap_or_default();
+    if volume_name.is_empty() {
+        volume_name = volume.to_string()
+    }
+    println!("Scanning {volume_name}...");
+    let file_system = string_from_utf16_buffer(&file_system_buffer)?;
+    if file_system != "NTFS" {
+        return Err(anyhow!("{volume_name} is not NTFS, it is {file_system}."));
     }
 
     // old code attempting to get the ID from the handle that errored and isnt needed anymore
@@ -113,7 +128,7 @@ pub unsafe fn get_files_in_volume(volume: String) -> Result<Vec<String>> {
             // the name isn't properly in the struct, we have to do pointer math to get it
             // https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ns-winioctl-usn_record_v2
             // convert the u8 bytes of UTF-16 into a rust string
-            match string_from_utf16(
+            match hstring_from_utf16(
                 &p_data[offset + record.FileNameOffset as usize
                     ..offset + record.FileNameOffset as usize + record.FileNameLength as usize],
             ) {
@@ -132,13 +147,19 @@ pub unsafe fn get_files_in_volume(volume: String) -> Result<Vec<String>> {
                         if let Some(r) = ret {
                             dbg!(record, r);
                         }
-                    } else if n.ends_with(".exe") {
-                        // is exe file
-                        // println!("DIR {}", n)
-                        exes.push(MiniFile {
-                            name: n,
-                            parent: record.ParentFileReferenceNumber,
-                        })
+                    } else {
+                        let wide = n.as_wide();
+                        // if ends in .exe
+                        if wide.len() >= 4
+                            && &wide[wide.len() - 4..] == HSTRING::from(".exe").as_wide()
+                        {
+                            // is exe file
+                            // println!("DIR {}", n)
+                            exes.push(MiniFile {
+                                name: n,
+                                parent: record.ParentFileReferenceNumber,
+                            })
+                        }
                     }
                     // println!("{}", n)
                 }
@@ -163,7 +184,7 @@ pub unsafe fn get_files_in_volume(volume: String) -> Result<Vec<String>> {
         dirs.len(),
     );
     // let mut full_file: String = String::new();
-    let mut files: Vec<String> = vec![];
+    let mut files: Vec<HSTRING> = vec![];
     for exe in exes {
         match minifile_to_path(&exe, &mut dirs, &handle) {
             Ok(path) => {
@@ -188,10 +209,10 @@ fn minifile_to_path(
     file: &MiniFile,
     dirs: &mut FxHashMap<u64, MiniDir>,
     handle: &HANDLE,
-) -> Result<String> {
+) -> Result<HSTRING> {
     // convert a MiniFile to a full resolved path string
     // parent path, set later
-    let parent: String;
+    let parent: HSTRING;
     // if the parent is in the dirs hashmap
     // clone so we can later borrow dirs to pass to the recursive child
     if let Some(cloned_parent) = dirs.get(&file.parent).cloned() {
@@ -220,16 +241,24 @@ fn minifile_to_path(
             MiniDir {
                 full_name: Some(unknown_path.clone()),
                 // doesnt matter
-                name: String::new(),
+                name: HSTRING::new(),
                 parent: 0,
             },
         );
         parent = unknown_path;
     }
-    Ok(format!("{}\\{}", parent, file.name))
+    Ok(combine_hstring_paths(&parent, &file.name)?)
 }
 
-unsafe fn path_from_id(handle: &HANDLE, id: &i64) -> Result<String> {
+fn combine_hstring_paths(parent: &HSTRING, child: &HSTRING) -> Result<HSTRING> {
+    hstring_from_utf16_buffer(
+        [parent.as_wide(), &[BACKSLASH_UTF16], child.as_wide()]
+            .concat()
+            .as_slice(),
+    )
+}
+
+unsafe fn path_from_id(handle: &HANDLE, id: &i64) -> Result<HSTRING> {
     // get the path from an unknown ID, most notably used for the root folder
 
     // weird struct to hold the ID
@@ -249,14 +278,14 @@ unsafe fn path_from_id(handle: &HANDLE, id: &i64) -> Result<String> {
     )?;
     // get the path from the handle we opened
     const BSIZE: usize = 0x8000;
-    let mut lpszFilePath: [u8; BSIZE] = [0; BSIZE];
-    let len = GetFinalPathNameByHandleA(file, &mut lpszFilePath, FILE_NAME_NORMALIZED);
+    let mut lpszFilePath: [u16; BSIZE] = [0; BSIZE];
+    let len = GetFinalPathNameByHandleW(file, &mut lpszFilePath, FILE_NAME_NORMALIZED);
     if len == 0 {
         // err case
-        Err(anyhow!("GetFinalPathNameByHandleA failed."))
+        Err(anyhow!("GetFinalPathNameByHandleA failed on {id}."))
     } else {
         // convert to string and return
-        let path = String::from_utf8(lpszFilePath[..len as usize].to_vec())?;
+        let path = hstring_from_utf16_buffer(&lpszFilePath[..len as usize])?;
         // println!("unknown ID {id}'s path is {path}");
         Ok(path)
     }
@@ -264,35 +293,23 @@ unsafe fn path_from_id(handle: &HANDLE, id: &i64) -> Result<String> {
 
 fn string_from_utf16_buffer(utf16: &[u16]) -> Result<String, FromUtf16Error> {
     let fs_string = String::from_utf16(utf16)?;
+    // this function handles buffers which can have trailing nulls
     Ok(fs_string.trim_end_matches('\0').to_string())
+}
+fn hstring_from_utf16_buffer(utf16: &[u16]) -> Result<HSTRING> {
+    let string = HSTRING::from_wide(utf16)?;
+    // this function handles buffers which can have trailing nulls
+    Ok(truncate_hstring(string, 0)?)
 }
 
 fn string_from_utf16(utf16: &[u8]) -> Result<String, FromUtf16Error> {
-    // thanks chatgpt for this btw
-    let name_words: Vec<u16> = utf16
-        // group by 2 bytes
-        .chunks(2)
-        // map bytes to words
-        // yes [chunk[0], chunk[1]] is necessary because 🤓 size cant be known at compile time
-        .map(|chunk| u16::from_ne_bytes([chunk[0], chunk[1]]))
-        // collect
-        .collect();
     // vec of words to utf16
-    String::from_utf16(&name_words)
+    String::from_utf16(&bytes_to_words(utf16))
 }
 
-fn hstring_from_utf16(utf16: &[u8]) -> Result<String, FromUtf16Error> {
-    // thanks chatgpt for this btw
-    let name_words: Vec<u16> = utf16
-        // group by 2 bytes
-        .chunks(2)
-        // map bytes to words
-        // yes [chunk[0], chunk[1]] is necessary because 🤓 size cant be known at compile time
-        .map(|chunk| u16::from_ne_bytes([chunk[0], chunk[1]]))
-        // collect
-        .collect();
-    // vec of words to utf16
-    String::from_utf16(&name_words)
+fn hstring_from_utf16(utf16: &[u8]) -> Result<HSTRING> {
+    // vec of words to HSTRING
+    Ok(HSTRING::from_wide(&bytes_to_words(utf16))?)
 }
 
 fn bytes_to_words(bytes: &[u8]) -> Vec<u16> {
@@ -307,26 +324,42 @@ fn bytes_to_words(bytes: &[u8]) -> Vec<u16> {
         .collect();
 }
 
-pub unsafe fn get_volumes() -> Result<Vec<String>> {
+fn truncate_hstring(hstring: HSTRING, trim: u16) -> Result<HSTRING> {
+    let wide: &[u16] = hstring.as_wide();
+    let to = match wide.iter().rposition(|c| *c != trim) {
+        Some(pos) => pos + 1, // include the last char that's not `trim`
+        None => 0,
+    };
+
+    Ok(HSTRING::from_wide(&wide[..to])?)
+}
+
+pub unsafe fn get_volumes() -> Result<Vec<HSTRING>> {
     // get all volumes, essentially filesystems, on the system
-    let mut volumes: Vec<String> = vec![];
-    let mut volume_name: [u16; MAX_PATH as usize] = [0; MAX_PATH as usize];
-    let handle = FindFirstVolumeW(&mut volume_name)?;
+    let mut volumes: Vec<HSTRING> = vec![];
+    // buffer, api docs say it cant be longer than MAX_PATH
+    let mut volume_buffer: [u16; MAX_PATH as usize] = [0; MAX_PATH as usize];
+    // get the first volume and weird handle object to find the rest
+    let handle = FindFirstVolumeW(&mut volume_buffer)?;
     let mut valid = true;
     while valid {
-        let volume = string_from_utf16_buffer(&volume_name)?;
-        volumes.push(volume.trim_end_matches('\\').to_string());
-        valid = FindNextVolumeW(handle, &mut volume_name).is_ok();
+        let hstring = HSTRING::from_wide(&volume_buffer)?;
+        // dbg!(hstring);
+        // volume paths have a trailing \ which breaks CreateFile, thanks michaelsoft binbows
+        // trim trailing nulls cause it's a fixed buffer then trailing backslash
+        let volume = truncate_hstring(truncate_hstring(hstring, 0)?, BACKSLASH_UTF16)?;
+        volumes.push(volume);
+        // weird windows way to find volume one at a time
+        valid = FindNextVolumeW(handle, &mut volume_buffer).is_ok();
     }
     Ok(volumes)
 }
 
-pub unsafe fn get_all_files() -> Result<Vec<String>> {
-    let mut files: Vec<String> = vec![];
+pub unsafe fn get_all_files() -> Result<Vec<HSTRING>> {
+    let mut files: Vec<HSTRING> = vec![];
     let volumes = get_volumes()?;
     println!("Found {} volumes.", volumes.len());
     for volume in volumes {
-        println!("Scanning {volume}...");
         match get_files_in_volume(volume) {
             Ok(mut vol_files) => {
                 println!("Found {} valid EXEs.", vol_files.len());
@@ -337,9 +370,15 @@ pub unsafe fn get_all_files() -> Result<Vec<String>> {
             }
         }
     }
-    println!(
-        "Finished scanning system. Found {} EXEs total.",
-        files.len()
-    );
-    Ok(files)
+    if files.is_empty() {
+        Err(anyhow!(
+            "Found no files. Make sure you're running as admin!"
+        ))
+    } else {
+        println!(
+            "Finished scanning system. Found {} EXEs total.",
+            files.len()
+        );
+        Ok(files)
+    }
 }

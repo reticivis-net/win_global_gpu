@@ -1,25 +1,14 @@
 use anyhow::{anyhow, Result};
 use rustc_hash::FxHashMap;
 use std::ffi::c_void;
-use std::fs::File;
-use std::io::Write;
-use std::path::Path;
 use std::string::FromUtf16Error;
 use windows::core::HSTRING;
-use windows::Win32::Foundation::{GENERIC_READ, HANDLE};
+use windows::Win32::Foundation::{GENERIC_READ, HANDLE, MAX_PATH};
 use windows::Win32::Storage::FileSystem::{
-    CreateFileW,
-    FileIdType,
-    GetFinalPathNameByHandleA,
-    OpenFileById,
-    FILE_ATTRIBUTE_DIRECTORY,
-    FILE_FLAG_OVERLAPPED,
-    FILE_ID_DESCRIPTOR,
-    FILE_ID_DESCRIPTOR_0,
-    FILE_NAME_NORMALIZED,
-    FILE_SHARE_READ,
-    FILE_SHARE_WRITE,
-    OPEN_EXISTING, //FILE_ID_INFO,FileIdInfo,GetFileInformationByHandleEx,
+    CreateFileW, FileIdType, FindFirstVolumeW, FindNextVolumeW, GetFinalPathNameByHandleA,
+    GetVolumeInformationByHandleW, OpenFileById, FILE_ATTRIBUTE_DIRECTORY, FILE_FLAG_OVERLAPPED,
+    FILE_ID_DESCRIPTOR, FILE_ID_DESCRIPTOR_0, FILE_NAME_NORMALIZED, FILE_SHARE_READ,
+    FILE_SHARE_WRITE, OPEN_EXISTING,
 };
 use windows::Win32::System::Ioctl::{FSCTL_ENUM_USN_DATA, MFT_ENUM_DATA_V0, USN_RECORD_V2};
 use windows::Win32::System::IO::DeviceIoControl;
@@ -38,10 +27,10 @@ struct MiniDir {
     parent: u64,
 }
 
-pub unsafe fn get_files(drive: char) -> Result<()> {
+pub unsafe fn get_files_in_volume(volume: String) -> Result<Vec<String>> {
     // create the handle to the volume we want
     let handle = CreateFileW(
-        &HSTRING::from(format!("\\\\.\\{drive}:")),
+        &HSTRING::from(&volume),
         GENERIC_READ.0,
         FILE_SHARE_READ | FILE_SHARE_WRITE,
         None,
@@ -49,6 +38,14 @@ pub unsafe fn get_files(drive: char) -> Result<()> {
         FILE_FLAG_OVERLAPPED,
         None,
     )?;
+
+    // make sure this is NTFS
+    let mut file_sytem: [u16; MAX_PATH as usize + 1] = [0; MAX_PATH as usize + 1];
+    GetVolumeInformationByHandleW(handle, None, None, None, None, Some(&mut file_sytem))?;
+    let fs = string_from_utf16_buffer(&file_sytem)?;
+    if fs != "NTFS" {
+        return Err(anyhow!("{volume} is not NTFS, it is {fs}."));
+    }
 
     // old code attempting to get the ID from the handle that errored and isnt needed anymore
     // let mut root_info = FILE_ID_INFO::default();
@@ -84,9 +81,8 @@ pub unsafe fn get_files(drive: char) -> Result<()> {
 
     let mut exes: Vec<MiniFile> = vec![];
     let mut dirs: FxHashMap<u64, MiniDir> = FxHashMap::default();
-    let mut files: u64 = 0;
+    let mut entries: u64 = 0;
 
-    println!("Scanning for EXEs...");
     // open the MFT
     // https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ni-winioctl-fsctl_enum_usn_data
     while DeviceIoControl(
@@ -122,21 +118,9 @@ pub unsafe fn get_files(drive: char) -> Result<()> {
                     ..offset + record.FileNameOffset as usize + record.FileNameLength as usize],
             ) {
                 Ok(n) => {
-                    // this never happens
-                    if record.Usn == 5
-                    /*1407374883553285*/
-                    {
-                        dbg!(record, n);
-                        panic!();
-                    }
+                    entries += 1;
                     // is not directory, we'll traverse those later
                     if record.FileAttributes & FILE_ATTRIBUTE_DIRECTORY.0 != 0 {
-                        if
-                        /*n == "C" ||*/
-                        n == "C:" || n == "C:\\" {
-                            dbg!(&record, &n);
-                            // panic!();
-                        }
                         let ret = dirs.insert(
                             record.FileReferenceNumber,
                             MiniDir {
@@ -148,16 +132,13 @@ pub unsafe fn get_files(drive: char) -> Result<()> {
                         if let Some(r) = ret {
                             dbg!(record, r);
                         }
-                    } else {
-                        files += 1;
-                        if n.ends_with(".exe") {
-                            // is exe file
-                            // println!("DIR {}", n)
-                            exes.push(MiniFile {
-                                name: n,
-                                parent: record.ParentFileReferenceNumber,
-                            })
-                        }
+                    } else if n.ends_with(".exe") {
+                        // is exe file
+                        // println!("DIR {}", n)
+                        exes.push(MiniFile {
+                            name: n,
+                            parent: record.ParentFileReferenceNumber,
+                        })
                     }
                     // println!("{}", n)
                 }
@@ -177,28 +158,30 @@ pub unsafe fn get_files(drive: char) -> Result<()> {
         }
     }
     println!(
-        "Found {} EXEs and {} dirs and {} files.\nBuilding tree...",
+        "Scanned {entries} entries. Found {} EXEs and {} dirs.\nBuilding tree...",
         exes.len(),
         dirs.len(),
-        files
     );
-    let mut full_file: String = String::new();
+    // let mut full_file: String = String::new();
+    let mut files: Vec<String> = vec![];
     for exe in exes {
         match minifile_to_path(&exe, &mut dirs, &handle) {
             Ok(path) => {
-                full_file.push_str(&path);
-                full_file.push_str("\n");
+                // full_file.push_str(&path);
+                // full_file.push_str("\n");
+                files.push(path);
             }
             Err(e) => {
-                dbg!("Tree failure:", exe, e);
+                dbg!(("Tree failure:", exe, e));
             }
         }
     }
-    println!("Tree built!\nWriting to file...");
-    let mut file = File::create("EXEs.txt")?;
-    file.write_all(full_file.as_bytes())?;
-    println!("Wrote!");
-    Ok(())
+    println!("Tree built!");
+    //\nWriting to file...");
+    // let mut file = File::create("EXEs.txt")?;
+    // file.write_all(full_file.as_bytes())?;
+    // println!("Wrote!");
+    Ok(files)
 }
 
 fn minifile_to_path(
@@ -279,6 +262,11 @@ unsafe fn path_from_id(handle: &HANDLE, id: &i64) -> Result<String> {
     }
 }
 
+fn string_from_utf16_buffer(utf16: &[u16]) -> Result<String, FromUtf16Error> {
+    let fs_string = String::from_utf16(utf16)?;
+    Ok(fs_string.trim_end_matches('\0').to_string())
+}
+
 fn string_from_utf16(utf16: &[u8]) -> Result<String, FromUtf16Error> {
     // thanks chatgpt for this btw
     let name_words: Vec<u16> = utf16
@@ -291,4 +279,41 @@ fn string_from_utf16(utf16: &[u8]) -> Result<String, FromUtf16Error> {
         .collect();
     // vec of words to utf16
     String::from_utf16(&name_words)
+}
+
+pub unsafe fn get_volumes() -> Result<Vec<String>> {
+    // get all volumes, essentially filesystems, on the system
+    let mut volumes: Vec<String> = vec![];
+    let mut volume_name: [u16; MAX_PATH as usize] = [0; MAX_PATH as usize];
+    let handle = FindFirstVolumeW(&mut volume_name)?;
+    let mut valid = true;
+    while valid {
+        let volume = string_from_utf16_buffer(&volume_name)?;
+        volumes.push(volume.trim_end_matches('\\').to_string());
+        valid = FindNextVolumeW(handle, &mut volume_name).is_ok();
+    }
+    Ok(volumes)
+}
+
+pub unsafe fn get_all_files() -> Result<Vec<String>> {
+    let mut files: Vec<String> = vec![];
+    let volumes = get_volumes()?;
+    println!("Found {} volumes.", volumes.len());
+    for volume in volumes {
+        println!("Scanning {volume}...");
+        match get_files_in_volume(volume) {
+            Ok(mut vol_files) => {
+                println!("Found {} valid EXEs.", vol_files.len());
+                files.append(&mut vol_files);
+            }
+            Err(e) => {
+                println!("Scanning failed due to {e}")
+            }
+        }
+    }
+    println!(
+        "Finished scanning system. Found {} EXEs total.",
+        files.len()
+    );
+    Ok(files)
 }

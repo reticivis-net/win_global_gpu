@@ -4,7 +4,6 @@ mod charging_events;
 mod exe_scan_2;
 mod notification;
 mod registry;
-mod sector_reader;
 mod winapp_scan;
 
 use anyhow::Result;

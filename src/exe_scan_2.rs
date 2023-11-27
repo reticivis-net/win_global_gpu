@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Result};
 use rustc_hash::FxHashMap;
 use std::ffi::c_void;
-use std::string::FromUtf16Error;
 use windows::core::HSTRING;
 use windows::Win32::Foundation::{GENERIC_READ, HANDLE, MAX_PATH};
 use windows::Win32::Storage::FileSystem::{
@@ -52,12 +51,12 @@ pub unsafe fn get_files_in_volume(volume: HSTRING) -> Result<Vec<HSTRING>> {
         None,
         Some(&mut file_system_buffer),
     )?;
-    let mut volume_name = string_from_utf16_buffer(&volume_name_buffer).unwrap_or_default();
+    let mut volume_name = hstring_from_utf16_buffer(&volume_name_buffer).unwrap_or_default();
     if volume_name.is_empty() {
-        volume_name = volume.to_string()
+        volume_name = volume.clone()
     }
     println!("Scanning {volume_name}...");
-    let file_system = string_from_utf16_buffer(&file_system_buffer)?;
+    let file_system = hstring_from_utf16_buffer(&file_system_buffer)?;
     if file_system != "NTFS" {
         return Err(anyhow!("{volume_name} is not NTFS, it is {file_system}."));
     }
@@ -247,7 +246,7 @@ fn minifile_to_path(
         );
         parent = unknown_path;
     }
-    Ok(combine_hstring_paths(&parent, &file.name)?)
+    combine_hstring_paths(&parent, &file.name)
 }
 
 fn combine_hstring_paths(parent: &HSTRING, child: &HSTRING) -> Result<HSTRING> {
@@ -278,33 +277,23 @@ unsafe fn path_from_id(handle: &HANDLE, id: &i64) -> Result<HSTRING> {
     )?;
     // get the path from the handle we opened
     const BSIZE: usize = 0x8000;
-    let mut lpszFilePath: [u16; BSIZE] = [0; BSIZE];
-    let len = GetFinalPathNameByHandleW(file, &mut lpszFilePath, FILE_NAME_NORMALIZED);
+    let mut lpsz_file_path: [u16; BSIZE] = [0; BSIZE];
+    let len = GetFinalPathNameByHandleW(file, &mut lpsz_file_path, FILE_NAME_NORMALIZED);
     if len == 0 {
         // err case
         Err(anyhow!("GetFinalPathNameByHandleA failed on {id}."))
     } else {
         // convert to string and return
-        let path = hstring_from_utf16_buffer(&lpszFilePath[..len as usize])?;
+        let path = hstring_from_utf16_buffer(&lpsz_file_path[..len as usize])?;
         // println!("unknown ID {id}'s path is {path}");
         Ok(path)
     }
 }
 
-fn string_from_utf16_buffer(utf16: &[u16]) -> Result<String, FromUtf16Error> {
-    let fs_string = String::from_utf16(utf16)?;
-    // this function handles buffers which can have trailing nulls
-    Ok(fs_string.trim_end_matches('\0').to_string())
-}
 fn hstring_from_utf16_buffer(utf16: &[u16]) -> Result<HSTRING> {
     let string = HSTRING::from_wide(utf16)?;
     // this function handles buffers which can have trailing nulls
-    Ok(truncate_hstring(string, 0)?)
-}
-
-fn string_from_utf16(utf16: &[u8]) -> Result<String, FromUtf16Error> {
-    // vec of words to utf16
-    String::from_utf16(&bytes_to_words(utf16))
+    truncate_hstring(string, 0)
 }
 
 fn hstring_from_utf16(utf16: &[u8]) -> Result<HSTRING> {

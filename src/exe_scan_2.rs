@@ -56,7 +56,7 @@ pub unsafe fn get_files_in_volume(volume: HSTRING) -> Result<Vec<HSTRING>> {
     if volume_name.is_empty() {
         volume_name = volume.clone()
     }
-    println!("Scanning {volume_name}...");
+    println!("Scanning volume \"{volume_name}\"...");
     let file_system = hstring_from_utf16_buffer(&file_system_buffer)?;
     if file_system != "NTFS" {
         return Err(anyhow!("{volume_name} is not NTFS, it is {file_system}."));
@@ -198,6 +198,10 @@ pub unsafe fn get_files_in_volume(volume: HSTRING) -> Result<Vec<HSTRING>> {
         }
     }
     println!("Tree built!");
+    println!(
+        "Found {} valid EXEs in volume \"{volume_name}\".",
+        files.len()
+    );
     //\nWriting to file...");
     // let mut file = File::create("EXEs.txt")?;
     // file.write_all(full_file.as_bytes())?;
@@ -311,7 +315,6 @@ pub unsafe fn get_all_files() -> Result<Vec<HSTRING>> {
     for volume in volumes {
         match get_files_in_volume(volume) {
             Ok(mut vol_files) => {
-                println!("Found {} valid EXEs.", vol_files.len());
                 files.append(&mut vol_files);
             }
             Err(e) => {

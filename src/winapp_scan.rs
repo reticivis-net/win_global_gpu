@@ -4,6 +4,7 @@ use windows::core::HSTRING;
 use windows::Management::Deployment::PackageManager;
 
 pub fn find_windows_apps() -> Result<Vec<HSTRING>> {
+    println!("Scanning for Windows apps...");
     let mut apps: Vec<HSTRING> = vec![];
     // annoying OOP object to get packages
     let manager = PackageManager::new()?;
@@ -15,5 +16,6 @@ pub fn find_windows_apps() -> Result<Vec<HSTRING>> {
             apps.push(app.AppUserModelId()?);
         }
     }
+    println!("Found {} windows apps.", apps.len());
     Ok(apps)
 }

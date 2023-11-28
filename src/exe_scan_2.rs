@@ -1,3 +1,4 @@
+use crate::hstring_utils::*;
 use anyhow::{anyhow, Result};
 use rustc_hash::FxHashMap;
 use std::ffi::c_void;
@@ -246,15 +247,7 @@ fn minifile_to_path(
         );
         parent = unknown_path;
     }
-    combine_hstring_paths(&parent, &file.name)
-}
-
-fn combine_hstring_paths(parent: &HSTRING, child: &HSTRING) -> Result<HSTRING> {
-    hstring_from_utf16_buffer(
-        [parent.as_wide(), &[BACKSLASH_UTF16], child.as_wide()]
-            .concat()
-            .as_slice(),
-    )
+    combine_hstring_paths(&parent, &HSTRING::from("\\"), &file.name)
 }
 
 unsafe fn path_from_id(handle: &HANDLE, id: &i64) -> Result<HSTRING> {
@@ -288,39 +281,6 @@ unsafe fn path_from_id(handle: &HANDLE, id: &i64) -> Result<HSTRING> {
         // println!("unknown ID {id}'s path is {path}");
         Ok(path)
     }
-}
-
-fn hstring_from_utf16_buffer(utf16: &[u16]) -> Result<HSTRING> {
-    let string = HSTRING::from_wide(utf16)?;
-    // this function handles buffers which can have trailing nulls
-    truncate_hstring(string, 0)
-}
-
-fn hstring_from_utf16(utf16: &[u8]) -> Result<HSTRING> {
-    // vec of words to HSTRING
-    Ok(HSTRING::from_wide(&bytes_to_words(utf16))?)
-}
-
-fn bytes_to_words(bytes: &[u8]) -> Vec<u16> {
-    // thanks chatgpt for this btw
-    return bytes
-        // group by 2 bytes
-        .chunks(2)
-        // map bytes to words
-        // yes [chunk[0], chunk[1]] is necessary because 🤓 size cant be known at compile time
-        .map(|chunk| u16::from_ne_bytes([chunk[0], chunk[1]]))
-        // collect
-        .collect();
-}
-
-fn truncate_hstring(hstring: HSTRING, trim: u16) -> Result<HSTRING> {
-    let wide: &[u16] = hstring.as_wide();
-    let to = match wide.iter().rposition(|c| *c != trim) {
-        Some(pos) => pos + 1, // include the last char that's not `trim`
-        None => 0,
-    };
-
-    Ok(HSTRING::from_wide(&wide[..to])?)
 }
 
 pub unsafe fn get_volumes() -> Result<Vec<HSTRING>> {

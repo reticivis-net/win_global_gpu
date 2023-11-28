@@ -22,7 +22,11 @@ windows = { version = "0.52.0", features = [
     "Win32_Storage_FileSystem",
     "Win32_Security",
     "Win32_System_IO",
-    "Win32_System_Ioctl"
+    "Win32_System_Ioctl",
+    "ApplicationModel",
+    "Foundation_Collections",
+    "Management_Deployment",
+    "ApplicationModel_Core"
 ] }
 winreg = "0.52.0"
 winrt-toast = "0.1.1"

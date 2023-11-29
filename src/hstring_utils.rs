@@ -26,14 +26,15 @@ pub fn hstring_from_utf16(utf16: &[u8]) -> Result<HSTRING> {
 
 fn bytes_to_words(bytes: &[u8]) -> Vec<u16> {
     // thanks chatgpt for this btw
-    return bytes
+    // tried to do a transmute to a &[u16], broke shit
+    bytes
         // group by 2 bytes
         .chunks(2)
         // map bytes to words
         // yes [chunk[0], chunk[1]] is necessary because 🤓 size cant be known at compile time
         .map(|chunk| u16::from_ne_bytes([chunk[0], chunk[1]]))
         // collect
-        .collect();
+        .collect()
 }
 
 pub fn truncate_hstring(hstring: HSTRING, trim: u16) -> Result<HSTRING> {

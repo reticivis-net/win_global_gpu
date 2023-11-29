@@ -26,7 +26,9 @@ windows = { version = "0.52.0", features = [
     "Management_Deployment",
     "ApplicationModel_Core",
     "Win32_System_Memory",
-    "Win32_System_Threading"
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+    "Win32_System_Console"
 ] }
 winrt-toast = "0.1.1"
 

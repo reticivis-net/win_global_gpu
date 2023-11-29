@@ -35,6 +35,7 @@ unsafe fn write_pid_to_shared_mem() -> Result<()> {
     UnmapViewOfFile(p_buf)?;
     Ok(())
 }
+
 pub unsafe fn kill_older_process() -> Result<()> {
     let name = HSTRING::from("Global\\win_global_gpu");
 
@@ -51,12 +52,13 @@ pub unsafe fn kill_older_process() -> Result<()> {
                 "Found older Win Global GPU instance running with PID {}. Killing...",
                 pid
             );
+            // grab handle to process with proper perms
             let process_handle =
                 OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_TERMINATE, false, pid)?;
             // kill process
             TerminateProcess(process_handle, 0)?;
             println!("Killed!");
-            // release handles
+            // release handles, might not be necessary but is good practice
             UnmapViewOfFile(p_buf)?;
             CloseHandle(process_handle)?;
             // now that the old process is killed, the memory is still open, we need to write our new PID to it

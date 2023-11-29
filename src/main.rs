@@ -25,10 +25,13 @@ static PROGRAMS: OnceLock<Vec<HSTRING>> = OnceLock::new();
 fn main() -> Result<()> {
     // TODO: CreateMutexW to detect multiple instances
     println!("Hello, world!");
+    unsafe {
+        prevent_duplicate::kill_older_process()?;
+    }
     if PROGRAMS.set(full_win_scan::get_all_programs()?).is_err() {
         return Err(anyhow!("Failed to store program list."));
     }
-    // notification::register()?;
-    // unsafe { charging_events::register_events(unplug, plug)? }
+    notification::register()?;
+    unsafe { charging_events::register_events(unplug, plug)? }
     Ok(())
 }

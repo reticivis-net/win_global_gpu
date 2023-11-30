@@ -11,8 +11,9 @@ use windows::Win32::UI::WindowsAndMessaging::SW_NORMAL;
 unsafe fn is_admin() -> Result<bool> {
     // get process
     let proc = GetCurrentProcess();
-    let mut handle: HANDLE = INVALID_HANDLE_VALUE; // default value just to have something
-                                                   // open handle thing
+    // default value just to have something
+    let mut handle: HANDLE = INVALID_HANDLE_VALUE;
+    // open handle thing
     OpenProcessToken(proc, TOKEN_QUERY, &mut handle as *mut HANDLE)?;
     // set up vars
     let mut elevation = TOKEN_ELEVATION::default();
@@ -36,13 +37,15 @@ unsafe fn get_self_path() -> Result<HSTRING> {
     let mut self_path_buf: [u16; BUF_SIZE] = [0; BUF_SIZE];
     // get path
     let length = GetModuleFileNameW(None, &mut self_path_buf);
-    GetLastError()?; // error handling isnt automatic for this function for some reason
-    let self_path = HSTRING::from_wide(&self_path_buf[..length as usize])?; // create hstring from buffer
+    // error handling isnt automatic for this function for some reason
+    GetLastError()?;
+    // create hstring from buffer
+    let self_path = HSTRING::from_wide(&self_path_buf[..length as usize])?;
     Ok(self_path)
 }
 
 unsafe fn elevate() -> Result<()> {
-    // get path to exe
+    // get path to self
     let self_path = get_self_path()?;
     // run it as admin
     ShellExecuteW(
@@ -54,12 +57,14 @@ unsafe fn elevate() -> Result<()> {
         None,
         SW_NORMAL,
     );
-    GetLastError()?; // error handling isnt automatic for this function for some reason
+    // error handling isnt automatic for this function for some reason
+    GetLastError()?;
     Ok(())
 }
 
 pub fn elevate_if_needed() -> Result<()> {
-    // if program is not running as admin, spawn new process as admin and end self
+    // if program is not running as admin, spawn new process as admin and exit
+    // "reincarnate" as admin-privileged process
     let admin = unsafe { is_admin()? };
     if !admin {
         println!("Not running as admin! Requesting elevation...");

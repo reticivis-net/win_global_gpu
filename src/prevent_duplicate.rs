@@ -30,7 +30,7 @@ unsafe fn write_pid_to_shared_mem() -> Result<()> {
     // get PID
     let pid = std::process::id();
     // write PID to memory
-    std::ptr::write(p_buf.Value as *mut u32, pid);
+    std::ptr::write_volatile(p_buf.Value as *mut u32, pid);
     // free pointer-like thing
     UnmapViewOfFile(p_buf)?;
     Ok(())
@@ -47,7 +47,7 @@ pub unsafe fn kill_older_process() -> Result<()> {
             // grab the pointer to shared memory
             let p_buf = MapViewOfFile(file_mapping, FILE_MAP_ALL_ACCESS, 0, 0, BUF_SIZE as usize);
             // read PID
-            let pid = *(p_buf.Value as *mut u32);
+            let pid = std::ptr::read_volatile(p_buf.Value as *mut u32);
             println!(
                 "Found older Win Global GPU instance running with PID {}. Killing...",
                 pid

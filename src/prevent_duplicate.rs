@@ -15,7 +15,7 @@ use anyhow::Result;
 const BUF_SIZE: u32 = std::mem::size_of::<u32>() as u32; // should just be 4 but why not
 
 unsafe fn write_pid_to_shared_mem() -> Result<()> {
-    let name = HSTRING::from("Global\\win_global_gpu");
+    let name = HSTRING::from("Global\\net.reticivis.win_global_gpu");
     // create shared memory
     let map_file = CreateFileMappingW(
         INVALID_HANDLE_VALUE, // use paging file
@@ -37,7 +37,7 @@ unsafe fn write_pid_to_shared_mem() -> Result<()> {
 }
 
 pub unsafe fn kill_older_process() -> Result<()> {
-    let name = HSTRING::from("Global\\win_global_gpu");
+    let name = HSTRING::from("Global\\net.reticivis.win_global_gpu");
 
     // https://learn.microsoft.com/en-us/windows/win32/memory/creating-named-shared-memory?redirectedfrom=MSDN
     // try to open the shared memory

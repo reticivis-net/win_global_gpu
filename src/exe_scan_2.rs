@@ -190,7 +190,7 @@ pub unsafe fn get_files_in_volume(volume: HSTRING) -> Result<Vec<HSTRING>> {
             Ok(path) => {
                 // full_file.push_str(&path);
                 // full_file.push_str("\n");
-                files.push(path);
+                files.push(clean_path(path)?);
             }
             Err(e) => {
                 dbg!(("Tree failure:", exe, e));
@@ -207,6 +207,15 @@ pub unsafe fn get_files_in_volume(volume: HSTRING) -> Result<Vec<HSTRING>> {
     // file.write_all(full_file.as_bytes())?;
     // println!("Wrote!");
     Ok(files)
+}
+
+fn clean_path(path: HSTRING) -> Result<HSTRING> {
+    replace(
+        // strip double backslashes
+        replace(path, HSTRING::from(r"\\?\"), HSTRING::new())?, // strip weird long path thing
+        HSTRING::from(r"\\"),
+        HSTRING::from(r"\"),
+    )
 }
 
 fn minifile_to_path(

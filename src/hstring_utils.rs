@@ -46,3 +46,28 @@ pub fn truncate_hstring(hstring: HSTRING, trim: u16) -> Result<HSTRING> {
 
     Ok(HSTRING::from_wide(&wide[..to])?)
 }
+
+pub fn replace(haystack: HSTRING, needle: HSTRING, replace: HSTRING) -> Result<HSTRING> {
+    let mut out: Vec<u16> = vec![];
+    let haystack_words = haystack.as_wide();
+    let needle_words = needle.as_wide();
+    let replace_words = replace.as_wide();
+
+    let haystack_len = haystack_words.len();
+    let needle_len = needle_words.len();
+
+    let mut i = 0;
+    while i < haystack_len {
+        if i + needle_len <= haystack_len && &haystack_words[i..i + needle_len] == needle_words {
+            for word in replace_words {
+                out.push(*word)
+            }
+            i += needle_len;
+        } else {
+            out.push(haystack_words[i]);
+            i += 1;
+        }
+    }
+
+    Ok(HSTRING::from_wide(out.as_slice())?)
+}

@@ -1,5 +1,6 @@
 use anyhow::Result;
-use std::ffi::c_void;
+use std::env;
+use std::ffi::{c_void, OsStr, OsString};
 use windows::core::HSTRING;
 use windows::Win32::Foundation::{GetLastError, HANDLE, INVALID_HANDLE_VALUE};
 use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
@@ -53,7 +54,13 @@ unsafe fn elevate() -> Result<()> {
         // https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew#runas
         &HSTRING::from("runas"), // run as admin
         &self_path,
-        None,
+        // pass args
+        &HSTRING::from(
+            env::args_os()
+                .skip(1)
+                .collect::<Vec<OsString>>()
+                .join(OsStr::new(" ")),
+        ),
         None,
         SW_NORMAL,
     );

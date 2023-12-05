@@ -1,4 +1,3 @@
-use crate::hstring_utils::*;
 use anyhow::Result;
 use windows::core::HSTRING;
 use windows::Management::Deployment::PackageManager;

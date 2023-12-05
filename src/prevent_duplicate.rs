@@ -36,7 +36,7 @@ unsafe fn write_pid_to_shared_mem() -> Result<()> {
     Ok(())
 }
 
-pub unsafe fn kill_older_process() -> Result<()> {
+pub unsafe fn kill_older_process() -> Result<bool> {
     let name = HSTRING::from("Global\\net.reticivis.win_global_gpu");
 
     // https://learn.microsoft.com/en-us/windows/win32/memory/creating-named-shared-memory?redirectedfrom=MSDN
@@ -63,18 +63,18 @@ pub unsafe fn kill_older_process() -> Result<()> {
             CloseHandle(process_handle)?;
             // now that the old process is killed, the memory is still open, we need to write our new PID to it
             write_pid_to_shared_mem()?;
+            Ok(true)
         }
         Err(e) => {
             if e == ERROR_FILE_NOT_FOUND.into() {
                 // nothing open!
                 // signal that we exist now
                 write_pid_to_shared_mem()?;
+                Ok(false)
             } else {
                 // some other issue D:
-                return Err(e.into());
+                Err(e.into())
             }
         }
     }
-
-    Ok(())
 }

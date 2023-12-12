@@ -1,0 +1,13 @@
+Win Global GPU v{}
+
+USAGE:
+    {} [SUBCOMMAND]
+
+SUBCOMMANDS:
+    <no subcommand> Launch Win Global GPU in default mode: integrated GPU on battery power and dedicated GPU on wall power
+    shutdown        Shuts down any running stance of Win Global GPU
+    dedicated       Sets the preferred GPU to the dedicated GPU
+    integrated      Sets the preferred GPU to the integrated GPU
+    reset           Resets the preferred GPU, lets Windows decide
+    help            Shows this menu
+    about           Shows some information about Win Global GPU

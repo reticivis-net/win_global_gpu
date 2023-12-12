@@ -1,0 +1,4 @@
+Win Global GPU v{}
+Created by: Melody https://reticivis.net/
+Source code, project info, and FAQs: https://github.com/reticivis-net/win_global_gpu
+Written in Rust

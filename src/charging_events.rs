@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use crate::error::Result;
 use std::sync::OnceLock;
 use windows::core::{HSTRING, PCWSTR};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
@@ -32,7 +32,7 @@ pub unsafe fn register_events(unplug: fn(), plug: fn()) -> Result<()> {
     };
     let atom = RegisterClassW(&wc);
     if atom == 0 {
-        return Err(anyhow!("RegisterClass failed"));
+        return Err("RegisterClass failed".into());
     }
     // we need a window to receive messages, make a hidden one
     let window = CreateWindowExW(

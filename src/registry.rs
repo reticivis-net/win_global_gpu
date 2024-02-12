@@ -1,6 +1,6 @@
 // HKEY_CURRENT_USER\Software\Microsoft\DirectX\UserGpuPreferences
 
-use anyhow::Result;
+use crate::error::Result;
 use windows::core::{HSTRING, PCWSTR};
 use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, HANDLE};
 use windows::Win32::Storage::FileSystem::{

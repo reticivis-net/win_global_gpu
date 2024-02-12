@@ -2,6 +2,7 @@
 
 mod charging_events;
 mod elevate;
+mod error;
 mod exe_scan_2;
 mod full_win_scan;
 #[cfg(not(debug_assertions))]
@@ -12,10 +13,12 @@ mod prevent_duplicate;
 mod registry;
 mod winapp_scan;
 
-use anyhow::{anyhow, Result};
+// use anyhow::{anyhow, Result};
 use std::env;
 use std::sync::OnceLock;
 use windows::core::HSTRING;
+
+use crate::error::Result;
 
 fn unplug() {
     let res =
@@ -59,7 +62,7 @@ fn kill_duplicate() -> Result<bool> {
 fn set_programs() -> Result<()> {
     PROGRAMS
         .set(full_win_scan::get_all_programs()?)
-        .map_err(|_| anyhow!("Failed to store program list."))
+        .map_err(|_| "Failed to store program list.".into())
 }
 fn core() -> Result<()> {
     kill_duplicate()?;
@@ -79,10 +82,10 @@ fn prog() -> Result<String> {
     // modified from https://stackoverflow.com/a/58113997/9044183
     env::current_exe()?
         .file_name()
-        .ok_or(anyhow!("No file name"))?
+        .ok_or::<error::Error>("No file name".into())?
         .to_os_string()
         .into_string()
-        .map_err(|e| anyhow!("Failed to convert {e:?} to String"))
+        .map_err(|e| format!("Failed to convert {e:?} to String").into())
 }
 
 fn main() -> Result<()> {

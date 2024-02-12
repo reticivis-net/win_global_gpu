@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::error::Result;
 use winrt_toast::{Toast, ToastDuration, ToastManager};
 
 const ICON: &[u8] = include_bytes!("../win_global_gpu.ico");

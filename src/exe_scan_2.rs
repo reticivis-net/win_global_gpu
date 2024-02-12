@@ -1,5 +1,5 @@
+use crate::error::Result;
 use crate::hstring_utils::*;
-use anyhow::{anyhow, Result};
 use rustc_hash::FxHashMap;
 use std::ffi::c_void;
 use windows::core::HSTRING;
@@ -59,7 +59,7 @@ pub unsafe fn get_files_in_volume(volume: HSTRING) -> Result<Vec<HSTRING>> {
     println!("Scanning volume \"{volume_name}\"...");
     let file_system = hstring_from_utf16_buffer(&file_system_buffer)?;
     if file_system != "NTFS" {
-        return Err(anyhow!("{volume_name} is not NTFS, it is {file_system}."));
+        return Err(format!("{volume_name} is not NTFS, it is {file_system}.").into());
     }
 
     // old code attempting to get the ID from the handle that errored and isnt needed anymore
@@ -287,7 +287,7 @@ unsafe fn path_from_id(handle: &HANDLE, id: &i64) -> Result<HSTRING> {
     let len = GetFinalPathNameByHandleW(file, &mut lpsz_file_path, FILE_NAME_NORMALIZED);
     if len == 0 {
         // err case
-        Err(anyhow!("GetFinalPathNameByHandleA failed on {id}."))
+        Err(format!("GetFinalPathNameByHandleA failed on {id}.").into())
     } else {
         // convert to string and return
         let path = hstring_from_utf16_buffer(&lpsz_file_path[..len as usize])?;
@@ -332,9 +332,7 @@ pub unsafe fn get_all_files() -> Result<Vec<HSTRING>> {
         }
     }
     if files.is_empty() {
-        Err(anyhow!(
-            "Found no files. Make sure you're running as admin!"
-        ))
+        Err("Found no files. Make sure you're running as admin!".into())
     } else {
         println!(
             "Finished scanning system. Found {} EXEs total.",

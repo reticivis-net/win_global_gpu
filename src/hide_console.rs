@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::error::Result;
 use windows::Win32::System::Console::{FreeConsole, GetConsoleProcessList};
 
 pub unsafe fn hide_console() -> Result<()> {

@@ -1,6 +1,6 @@
+use crate::error::Result;
 use crate::exe_scan_2;
 use crate::winapp_scan;
-use anyhow::Result;
 use windows::core::HSTRING;
 
 pub fn get_all_programs() -> Result<Vec<HSTRING>> {

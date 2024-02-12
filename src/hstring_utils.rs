@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::error::Result;
 use windows::core::HSTRING;
 
 pub fn combine_hstring_paths(

@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::error::Result;
 use std::env;
 use std::ffi::{c_void, OsStr, OsString};
 use windows::core::HSTRING;

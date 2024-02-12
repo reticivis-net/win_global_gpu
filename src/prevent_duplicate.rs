@@ -9,7 +9,7 @@ use windows::Win32::System::Threading::{
     OpenProcess, TerminateProcess, PROCESS_QUERY_INFORMATION, PROCESS_TERMINATE,
 };
 
-use anyhow::Result;
+use crate::error::Result;
 
 // size of 32 bit integer, which is what windows uses for PIDs
 const BUF_SIZE: u32 = std::mem::size_of::<u32>() as u32; // should just be 4 but why not

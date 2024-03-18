@@ -4,14 +4,15 @@ mod charging_events;
 mod elevate;
 mod exe_scan_2;
 mod full_win_scan;
-#[cfg(not(debug_assertions))]
 mod hide_console;
 mod hstring_utils;
 mod notification;
+mod panic;
 mod prevent_duplicate;
 mod registry;
 mod winapp_scan;
 
+use crate::panic::setup_panic_hook;
 use anyhow::{anyhow, Result};
 use std::env;
 use std::sync::OnceLock;
@@ -62,14 +63,14 @@ fn set_programs() -> Result<()> {
         .map_err(|_| anyhow!("Failed to store program list."))
 }
 fn core() -> Result<()> {
+    setup_panic_hook();
     kill_duplicate()?;
     set_programs()?;
     notification::register()?;
     // only hide console in release mode
     // RustRover's debug mode counts as an attached console and gets freed
-    #[cfg(not(debug_assertions))]
-    unsafe {
-        hide_console::hide_console()?
+    if cfg!(not(debug_assertions)) {
+        unsafe { hide_console::hide_console()? }
     }
     unsafe { charging_events::register_events(unplug, plug)? }
     Ok(())

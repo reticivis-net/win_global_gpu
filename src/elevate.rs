@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use std::env;
 use std::ffi::{c_void, OsStr, OsString};
 use windows::core::HSTRING;
@@ -32,28 +32,18 @@ unsafe fn is_admin() -> Result<bool> {
     Ok(elevation.TokenIsElevated != 0)
 }
 
-unsafe fn get_self_path() -> Result<HSTRING> {
-    // prepare buffer
-    const BUF_SIZE: usize = 0x10_000; // overkill but shut up
-    let mut self_path_buf: [u16; BUF_SIZE] = [0; BUF_SIZE];
-    // get path
-    let length = GetModuleFileNameW(None, &mut self_path_buf);
-    // error handling isnt automatic for this function for some reason
-    GetLastError()?;
-    // create hstring from buffer
-    let self_path = HSTRING::from_wide(&self_path_buf[..length as usize])?;
-    Ok(self_path)
-}
-
 unsafe fn elevate() -> Result<()> {
     // get path to self
-    let self_path = get_self_path()?;
+    let self_path: String = env::current_exe()?
+        .into_os_string()
+        .into_string()
+        .map_err(|_| anyhow!("Failed to convert self path to string."))?;
     // run it as admin
     ShellExecuteW(
         None,
         // https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew#runas
         &HSTRING::from("runas"), // run as admin
-        &self_path,
+        &HSTRING::from(self_path),
         // pass args
         &HSTRING::from(
             env::args_os()

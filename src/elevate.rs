@@ -1,10 +1,10 @@
-use anyhow::{anyhow, Result};
 use std::env;
 use std::ffi::{c_void, OsStr, OsString};
+
+use anyhow::{anyhow, Result};
 use windows::core::HSTRING;
 use windows::Win32::Foundation::{GetLastError, HANDLE, INVALID_HANDLE_VALUE};
 use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
-use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
 use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::SW_NORMAL;

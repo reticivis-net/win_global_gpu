@@ -4,7 +4,7 @@ fn main() -> io::Result<()> {
     if env::var_os("CARGO_CFG_WINDOWS").is_some() {
         WindowsResource::new()
             // set exe icon
-            .set_icon("win_global_gpu.ico")
+            .set_icon("assets/win_global_gpu.ico")
             // require admin
             // .set_manifest(
             //                 r#"

@@ -35,12 +35,13 @@ pub unsafe fn write_reg(programs: &Vec<HSTRING>, mode: GpuMode) -> Result<()> {
     match write_reg_transaction(transaction, programs, mode) {
         Ok(_) => {
             CommitTransaction(transaction)?;
+            Ok(())
         }
-        Err(_) => {
+        Err(e) => {
             RollbackTransaction(transaction)?;
+            Err(e)
         }
     }
-    Ok(())
 }
 
 pub unsafe fn write_reg_transaction(

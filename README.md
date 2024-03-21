@@ -1,4 +1,4 @@
-# ![Win Global GPU](banner.png)
+# ![Win Global GPU](assets/banner.png)
 
 # Win Global GPU
 

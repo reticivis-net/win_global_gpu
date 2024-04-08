@@ -1,6 +1,6 @@
 [package]
 name = "win_global_gpu"
-version = "1.0.1"
+version = "1.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -9,7 +9,9 @@ edition = "2021"
 anyhow = { version = "1.0.75", features = [
     "backtrace"
 ] }
+pico-args = "0.5.0"
 rustc-hash = "1.1.0"
+uiautomation = "0.8.2"
 windows = { version = "0.52.0", features = [
     "Win32_System_Power",
     "Win32_Foundation",

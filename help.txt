@@ -1,7 +1,10 @@
 Win Global GPU v{}
 
 USAGE:
-    {} [SUBCOMMAND]
+    {} [FLAGS] [SUBCOMMAND]
+
+FLAGS:
+    -o, --optimus   Use the NVIDIA control panel to set the preferred GPU instead of the registry
 
 SUBCOMMANDS:
     <no subcommand> Launch Win Global GPU in default mode: integrated GPU on battery power and dedicated GPU on wall power

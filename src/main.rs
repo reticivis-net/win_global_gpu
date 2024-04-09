@@ -1,5 +1,13 @@
 // #![windows_subsystem = "windows"] // this prevents the gui?
 
+use std::env;
+use std::sync::OnceLock;
+
+use anyhow::{anyhow, Result};
+use windows::core::HSTRING;
+
+use crate::panic::setup_panic_hook;
+
 mod charging_events;
 mod elevate;
 mod exe_scan_2;
@@ -12,12 +20,6 @@ mod panic;
 mod prevent_duplicate;
 mod registry;
 mod winapp_scan;
-
-use crate::panic::setup_panic_hook;
-use anyhow::{anyhow, Result};
-use std::env;
-use std::sync::OnceLock;
-use windows::core::HSTRING;
 
 fn unplug() {
     let res =
@@ -126,6 +128,8 @@ fn prog() -> Result<String> {
 }
 
 fn main() -> Result<()> {
+    elevate::elevate_if_needed()?;
+    optimus::testing()?;
     let mut pargs = pico_args::Arguments::from_env();
     let use_optimus = pargs.contains(["-o", "--optimus"]);
     match pargs.subcommand()? {
